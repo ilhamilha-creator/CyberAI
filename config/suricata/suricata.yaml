@@ -1,0 +1,36 @@
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: "[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]"
+    EXTERNAL_NET: "!$HOME_NET"
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+
+default-log-dir: /var/log/suricata/
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert
+        - http
+        - dns
+        - tls
+        - flow
+        - stats:
+            totals: yes
+            threads: no
+
+af-packet:
+  - interface: eth1
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - suricata.rules

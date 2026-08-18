@@ -1,0 +1,27 @@
+apiVersion: 1
+datasources:
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: cyberai_soc
+    user: cyberai
+    secureJsonData: { password: "CyberAI_S3cur3_2024!" }
+    jsonData: { sslmode: disable, postgresVersion: 1500 }
+    isDefault: true
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+  - name: Elasticsearch
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    database: cyberai-events
+    jsonData: { esVersion: "8.11.0", timeField: ts }
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData: { version: Flux, organization: cyberai-org, defaultBucket: cyberai-metrics }
+    secureJsonData: { token: cyberai-influxdb-super-secret-token-v8-2024 }

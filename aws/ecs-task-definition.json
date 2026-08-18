@@ -1,0 +1,173 @@
+{
+  "family": "cyberai-expert-v8",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "4096",
+  "memory": "16384",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "cockroachdb",
+      "image": "cockroachdb/cockroach:v24.1.0",
+      "cpu": 1024,
+      "memory": 4096,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 26257,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "COCKROACH_USER",
+          "value": "cyberai"
+        },
+        {
+          "name": "COCKROACH_PASSWORD",
+          "value": "CyberAI_S3cur3_2024!"
+        },
+        {
+          "name": "COCKROACH_DATABASE",
+          "value": "cyberai_soc"
+        }
+      ],
+      "command": [
+        "start-single-node",
+        "--insecure",
+        "--advertise-addr",
+        "cockroachdb",
+        "--listen-addr",
+        "0.0.0.0:26257",
+        "--http-addr",
+        "0.0.0.0:8080"
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cyberai-expert",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "cockroachdb"
+        }
+      },
+      "mountPoints": [
+        {
+          "sourceVolume": "cockroachdb-data",
+          "containerPath": "/var/lib/cockroachdb"
+        }
+      ]
+    },
+    {
+      "name": "backend",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/cyberai-backend:latest",
+      "cpu": 1024,
+      "memory": 2048,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "DATABASE_URL",
+          "value": "postgresql+asyncpg://cyberai:CyberAI_S3cur3_2024!@cockroachdb:26257/cyberai_soc?sslmode=disable"
+        },
+        {
+          "name": "DATABASE_URL_SYNC",
+          "value": "postgresql://cyberai:CyberAI_S3cur3_2024!@cockroachdb:26257/cyberai_soc?sslmode=disable"
+        },
+        {
+          "name": "ELASTICSEARCH_URL",
+          "value": "http://elasticsearch:9200"
+        },
+        {
+          "name": "KAFKA_BROKER",
+          "value": "kafka:29092"
+        },
+        {
+          "name": "REDIS_URL",
+          "value": "redis://:Redis_CyberAI_2024!@redis:6379/0"
+        },
+        {
+          "name": "SECRET_KEY",
+          "value": "cyberai-jwt-secret-v8"
+        },
+        {
+          "name": "API_KEY_ADMIN",
+          "value": "cyberai-admin-key-v8-2024"
+        },
+        {
+          "name": "API_KEY_ANALYST",
+          "value": "cyberai-analyst-key-v8-2024"
+        }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "cockroachdb",
+          "condition": "START"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cyberai-expert",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "backend"
+        }
+      }
+    },
+    {
+      "name": "frontend",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/cyberai-frontend:latest",
+      "cpu": 512,
+      "memory": 1024,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "backend",
+          "condition": "START"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cyberai-expert",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "frontend"
+        }
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "cockroachdb-data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-xxxxxxxx",
+        "rootDirectory": "/cockroachdb"
+      }
+    }
+  ],
+  "tags": [
+    {
+      "key": "Project",
+      "value": "CyberAI-Expert-v8"
+    },
+    {
+      "key": "Hackathon",
+      "value": "CockroachDB-AWS-Agentic-Memory"
+    }
+  ]
+}

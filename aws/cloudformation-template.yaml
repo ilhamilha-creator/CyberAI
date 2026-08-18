@@ -1,0 +1,392 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CyberAI-Expert v8.0 - CockroachDB × AWS Hackathon Submission - Agentic Memory SOC Platform'
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: VPC CIDR block
+  
+  SubnetCidr:
+    Type: String
+    Default: 10.0.1.0/24
+    Description: Subnet CIDR block
+  
+  AvailabilityZone:
+    Type: String
+    Default: us-east-1a
+    Description: Availability Zone
+
+Resources:
+  # ==================== VPC & NETWORKING ====================
+  
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+        - Key: Hackathon
+          Value: CockroachDB-AWS-Agentic-Memory
+  
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr
+      AvailabilityZone: !Ref AvailabilityZone
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  InternetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteTable
+  
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for CyberAI-Expert SOC Platform
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 26257
+          ToPort: 26257
+          CidrIp: !Ref VpcCidr
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref VpcCidr
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  # ==================== EFS FOR COCKROACHDB PERSISTENCE ====================
+  
+  FileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+      FileSystemTags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+        - Key: Component
+          Value: CockroachDB-Storage
+  
+  MountTarget:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Ref Subnet
+      SecurityGroups:
+        - !Ref SecurityGroup
+  
+  # ==================== ECS CLUSTER ====================
+  
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: cyberai-expert-cluster
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  # ==================== IAM ROLES ====================
+  
+  ECSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CyberAIExpertTaskPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - elasticfilesystem:ClientMount
+                  - elasticfilesystem:ClientWrite
+                Resource: !GetAtt FileSystem.Arn
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  # ==================== CLOUDWATCH LOGS ====================
+  
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/cyberai-expert
+      RetentionInDays: 7
+  
+  # ==================== APPLICATION LOAD BALANCER ====================
+  
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: cyberai-expert-alb
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref Subnet
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cyberai-expert-tg
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 2
+  
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  
+  # ==================== ECS SERVICE ====================
+  
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - Listener
+    Properties:
+      ServiceName: cyberai-expert-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref Subnet
+          SecurityGroups:
+            - !Ref SecurityGroup
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - ContainerName: frontend
+          ContainerPort: 3000
+          TargetGroupArn: !Ref TargetGroup
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+  
+  # ==================== ECS TASK DEFINITION ====================
+  
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: cyberai-expert-v8
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 4096
+      Memory: 16384
+      ExecutionRoleArn: !GetAtt ECSExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: cockroachdb
+          Image: cockroachdb/cockroach:v24.1.0
+          Cpu: 1024
+          Memory: 4096
+          Essential: true
+          PortMappings:
+            - ContainerPort: 26257
+              Protocol: tcp
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment:
+            - Name: COCKROACH_USER
+              Value: cyberai
+            - Name: COCKROACH_PASSWORD
+              Value: CyberAI_S3cur3_2024!
+            - Name: COCKROACH_DATABASE
+              Value: cyberai_soc
+          Command:
+            - start-single-node
+            - --insecure
+            - --advertise-addr
+            - cockroachdb
+            - --listen-addr
+            - 0.0.0.0:26257
+            - --http-addr
+            - 0.0.0.0:8080
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: cockroachdb
+          MountPoints:
+            - SourceVolume: cockroachdb-data
+              ContainerPath: /var/lib/cockroachdb
+        - Name: backend
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/cyberai-backend:latest"
+          Cpu: 1024
+          Memory: 2048
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: DATABASE_URL
+              Value: postgresql+asyncpg://cyberai:CyberAI_S3cur3_2024!@cockroachdb:26257/cyberai_soc?sslmode=disable
+            - Name: DATABASE_URL_SYNC
+              Value: postgresql://cyberai:CyberAI_S3cur3_2024!@cockroachdb:26257/cyberai_soc?sslmode=disable
+            - Name: SECRET_KEY
+              Value: cyberai-jwt-secret-v8
+            - Name: API_KEY_ADMIN
+              Value: cyberai-admin-key-v8-2024
+            - Name: API_KEY_ANALYST
+              Value: cyberai-analyst-key-v8-2024
+          DependsOn:
+            - ContainerName: cockroachdb
+              Condition: START
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+        - Name: frontend
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/cyberai-frontend:latest"
+          Cpu: 512
+          Memory: 1024
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3000
+              Protocol: tcp
+          DependsOn:
+            - ContainerName: backend
+              Condition: START
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+      Volumes:
+        - Name: cockroachdb-data
+          EFSVolumeConfiguration:
+            FilesystemId: !Ref FileSystem
+            RootDirectory: /cockroachdb
+      Tags:
+        - Key: Project
+          Value: CyberAI-Expert-v8
+        - Key: Hackathon
+          Value: CockroachDB-AWS-Agentic-Memory
+
+Outputs:
+  LoadBalancerDNS:
+    Description: Load Balancer DNS Name
+    Value: !GetAtt LoadBalancer.DNSName
+  
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
+  
+  FileSystemId:
+    Description: EFS File System ID for CockroachDB
+    Value: !Ref FileSystem
+  
+  CockroachDBAdminURL:
+    Description: CockroachDB Admin UI URL
+    Value: !Sub http://${LoadBalancer.DNSName}:8080
+  
+  SOCPlatformURL:
+    Description: CyberAI-Expert SOC Platform URL
+    Value: !Sub http://${LoadBalancer.DNSName}

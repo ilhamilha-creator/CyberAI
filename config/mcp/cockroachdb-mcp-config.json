@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "cockroachdb": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres@latest",
+        "postgresql://cyberai:CyberAI_S3cur3_2024!@cockroachdb:26257/cyberai_soc?sslmode=disable"
+      ],
+      "env": {
+        "PGDATABASE": "cyberai_soc",
+        "PGUSER": "cyberai",
+        "PGPASSWORD": "CyberAI_S3cur3_2024!",
+        "PGHOST": "cockroachdb",
+        "PGPORT": "26257"
+      }
+    }
+  },
+  "description": "CockroachDB MCP Server configuration for CyberAI-Expert v8.0 - Agentic Memory Layer",
+  "hackathon": {
+    "name": "CockroachDB × AWS Hackathon - Build with Agentic Memory",
+    "tools_used": [
+      "CockroachDB Cloud Managed MCP Server",
+      "CockroachDB Distributed Vector Indexing",
+      "CockroachDB Agent Skills Repo"
+    ],
+    "use_case": "AI-powered SOC platform with persistent agentic memory for threat detection and response",
+    "memory_layer": {
+      "conversation_history": "agent_memory table with vector embeddings",
+      "context_storage": "agent_context table for long-term context",
+      "task_state": "agent_tasks table for workflow management",
+      "semantic_search": "IVFFlat vector indexes on all memory tables"
+    }
+  }
+}
